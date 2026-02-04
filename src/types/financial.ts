@@ -8,6 +8,23 @@ export interface StaffPosition {
   taxRate: number; // % of salary for taxes
 }
 
+// Seasonality coefficients for each month (1.0 = 100% of base)
+export interface SeasonalityProfile {
+  name: string;
+  coefficients: number[]; // 12 values for Jan-Dec
+}
+
+// Scenario for "what if" analysis
+export interface Scenario {
+  id: string;
+  name: string;
+  description: string;
+  // Multipliers relative to base inputs (1.0 = no change)
+  revenueMultiplier: number; // affects guests per day
+  costMultiplier: number; // affects variable costs %
+  rentMultiplier: number; // affects rent
+}
+
 export interface InputParameters {
   // Space and rent
   floorArea: number; // м²
@@ -30,17 +47,30 @@ export interface InputParameters {
   otherFixedCosts: number; // прочие фиксированные расходы
   variableCostsPercent: number; // % от выручки
   
-  // Taxes and discounting
-  taxRate: number; // % налог на прибыль
+  // Taxes - УСН 15% from profit, VAT 5% if revenue > 20M
+  usnRate: number; // УСН rate (default 15%)
+  vatRate: number; // НДС rate (default 5%)
+  vatThreshold: number; // Порог выручки для НДС (default 20,000,000)
+  
+  // Discounting
   discountRate: number; // % ставка дисконтирования (годовая)
   
   // Horizon
   horizonMonths: number; // горизонт расчета (по умолчанию 36)
+  
+  // Seasonality
+  seasonalityEnabled: boolean;
+  seasonality: number[]; // 12 coefficients for each month
+  
+  // Scenario
+  activeScenarioId: string;
 }
 
 export interface MonthlyPL {
   month: number;
   revenue: number;
+  vat: number; // НДС (if applicable)
+  revenueAfterVat: number;
   variableCosts: number;
   grossProfit: number;
   fixedCosts: number;
@@ -49,8 +79,10 @@ export interface MonthlyPL {
   otherFixed: number;
   depreciation: number;
   ebit: number;
-  tax: number;
+  usn: number; // УСН tax
   netProfit: number;
+  cumulativeRevenue: number; // for VAT threshold tracking
+  seasonalityCoef: number;
 }
 
 export interface MonthlyCashFlow {
@@ -90,6 +122,48 @@ export interface FinancialSummary {
   breakEvenMonths: number | null;
 }
 
+export const defaultSeasonality: number[] = [
+  0.85, // Январь - пост-праздничный спад
+  0.80, // Февраль - низкий сезон
+  0.90, // Март - начало весны
+  0.95, // Апрель
+  1.00, // Май
+  1.05, // Июнь - летний сезон
+  1.10, // Июль - пик
+  1.10, // Август - пик
+  1.00, // Сентябрь
+  0.95, // Октябрь
+  0.90, // Ноябрь
+  1.20, // Декабрь - праздники
+];
+
+export const defaultScenarios: Scenario[] = [
+  {
+    id: 'pessimistic',
+    name: 'Пессимистичный',
+    description: 'Снижение выручки на 20%, рост расходов на 10%',
+    revenueMultiplier: 0.8,
+    costMultiplier: 1.1,
+    rentMultiplier: 1.0,
+  },
+  {
+    id: 'base',
+    name: 'Базовый',
+    description: 'Текущие параметры без изменений',
+    revenueMultiplier: 1.0,
+    costMultiplier: 1.0,
+    rentMultiplier: 1.0,
+  },
+  {
+    id: 'optimistic',
+    name: 'Оптимистичный',
+    description: 'Рост выручки на 20%, снижение расходов на 5%',
+    revenueMultiplier: 1.2,
+    costMultiplier: 0.95,
+    rentMultiplier: 1.0,
+  },
+];
+
 export const defaultInputs: InputParameters = {
   floorArea: 100,
   rentPerSqm: 2000,
@@ -109,7 +183,12 @@ export const defaultInputs: InputParameters = {
   ],
   otherFixedCosts: 100000,
   variableCostsPercent: 35,
-  taxRate: 20,
+  usnRate: 15,
+  vatRate: 5,
+  vatThreshold: 20000000,
   discountRate: 16,
   horizonMonths: 36,
+  seasonalityEnabled: true,
+  seasonality: [...defaultSeasonality],
+  activeScenarioId: 'base',
 };

@@ -1,9 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Trash2, Plus, Building2, Users, Calculator, Wallet, TrendingUp } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { Trash2, Plus, Building2, Users, Calculator, Wallet, TrendingUp, Calendar, Layers } from 'lucide-react';
 import type { InputParameters, StaffPosition } from '@/types/financial';
+import { defaultScenarios, defaultSeasonality } from '@/types/financial';
 import { formatNumber } from '@/utils/formatters';
 
 interface InputSidebarProps {
@@ -11,8 +20,13 @@ interface InputSidebarProps {
   onChange: (inputs: InputParameters) => void;
 }
 
+const monthNames = [
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+];
+
 export function InputSidebar({ inputs, onChange }: InputSidebarProps) {
-  const handleChange = (field: keyof InputParameters, value: number | string) => {
+  const handleChange = (field: keyof InputParameters, value: number | string | boolean | number[]) => {
     onChange({ ...inputs, [field]: value });
   };
 
@@ -43,9 +57,21 @@ export function InputSidebar({ inputs, onChange }: InputSidebarProps) {
     onChange({ ...inputs, floorArea: area, seatsCount: seats });
   };
 
+  const handleSeasonalityChange = (monthIndex: number, value: number) => {
+    const newSeasonality = [...inputs.seasonality];
+    newSeasonality[monthIndex] = value;
+    onChange({ ...inputs, seasonality: newSeasonality });
+  };
+
+  const resetSeasonality = () => {
+    onChange({ ...inputs, seasonality: [...defaultSeasonality] });
+  };
+
   const totalPayroll = inputs.staff.reduce((sum, pos) => {
     return sum + pos.salary * pos.count * (1 + pos.taxRate / 100);
   }, 0);
+
+  const activeScenario = defaultScenarios.find(s => s.id === inputs.activeScenarioId) || defaultScenarios[1];
 
   return (
     <div className="w-96 bg-card border-r border-border h-screen overflow-y-auto sidebar-scroll fixed left-0 top-0 z-10">
@@ -53,6 +79,88 @@ export function InputSidebar({ inputs, onChange }: InputSidebarProps) {
         <div className="mb-8">
           <h1 className="text-xl font-bold text-foreground">Финмодель ресторана</h1>
           <p className="text-sm text-muted-foreground mt-1">Калькулятор финансовой модели</p>
+        </div>
+
+        {/* Scenario Selector */}
+        <div className="input-section">
+          <h2 className="section-title">
+            <Layers className="w-4 h-4" />
+            Сценарий «что если»
+          </h2>
+          
+          <div className="space-y-2">
+            {defaultScenarios.map((scenario) => (
+              <button
+                key={scenario.id}
+                onClick={() => handleChange('activeScenarioId', scenario.id)}
+                className={`w-full text-left p-3 rounded-lg border transition-all ${
+                  inputs.activeScenarioId === scenario.id
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/50'
+                }`}
+              >
+                <div className="font-medium text-sm">{scenario.name}</div>
+                <div className="text-xs mt-1 opacity-80">{scenario.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Seasonality */}
+        <div className="input-section">
+          <h2 className="section-title">
+            <Calendar className="w-4 h-4" />
+            Сезонность
+          </h2>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="seasonalityEnabled">Учитывать сезонность</Label>
+              <Switch
+                id="seasonalityEnabled"
+                checked={inputs.seasonalityEnabled}
+                onCheckedChange={(checked) => handleChange('seasonalityEnabled', checked)}
+              />
+            </div>
+            
+            {inputs.seasonalityEnabled && (
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="seasonality" className="border-0">
+                  <AccordionTrigger className="py-2 text-sm hover:no-underline">
+                    Настроить коэффициенты
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-3 pt-2">
+                      {monthNames.map((month, index) => (
+                        <div key={month} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">{month}</span>
+                            <span className="font-medium">{Math.round(inputs.seasonality[index] * 100)}%</span>
+                          </div>
+                          <Slider
+                            value={[inputs.seasonality[index]]}
+                            min={0.5}
+                            max={1.5}
+                            step={0.05}
+                            onValueChange={([value]) => handleSeasonalityChange(index, value)}
+                            className="w-full"
+                          />
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={resetSeasonality}
+                        className="w-full mt-2"
+                      >
+                        Сбросить к стандартным
+                      </Button>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
+          </div>
         </div>
 
         {/* Space and Rent */}
@@ -99,7 +207,7 @@ export function InputSidebar({ inputs, onChange }: InputSidebarProps) {
             <div className="bg-accent/50 rounded-lg p-3 text-sm">
               <span className="text-muted-foreground">Аренда в месяц: </span>
               <span className="font-semibold text-foreground">
-                {formatNumber(inputs.floorArea * inputs.rentPerSqm)} ₽
+                {formatNumber(inputs.floorArea * inputs.rentPerSqm * activeScenario.rentMultiplier)} ₽
               </span>
             </div>
           </div>
@@ -148,9 +256,9 @@ export function InputSidebar({ inputs, onChange }: InputSidebarProps) {
             </div>
             
             <div className="bg-success-muted rounded-lg p-3 text-sm">
-              <span className="text-muted-foreground">Выручка в месяц: </span>
+              <span className="text-muted-foreground">Баз. выручка/мес: </span>
               <span className="font-semibold text-success">
-                {formatNumber(inputs.averageCheck * inputs.guestsPerDay * inputs.workDaysPerMonth)} ₽
+                {formatNumber(inputs.averageCheck * inputs.guestsPerDay * inputs.workDaysPerMonth * activeScenario.revenueMultiplier)} ₽
               </span>
             </div>
           </div>
@@ -312,6 +420,58 @@ export function InputSidebar({ inputs, onChange }: InputSidebarProps) {
           </div>
         </div>
 
+        {/* Tax Parameters */}
+        <div className="input-section">
+          <h2 className="section-title">
+            <Calculator className="w-4 h-4" />
+            Налогообложение (УСН)
+          </h2>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="usnRate">УСН (доходы минус расходы), %</Label>
+              <Input
+                id="usnRate"
+                type="number"
+                value={inputs.usnRate}
+                onChange={(e) => handleChange('usnRate', Number(e.target.value))}
+                min={0}
+                max={100}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="vatRate">НДС (при выручке &gt; порога), %</Label>
+              <Input
+                id="vatRate"
+                type="number"
+                value={inputs.vatRate}
+                onChange={(e) => handleChange('vatRate', Number(e.target.value))}
+                min={0}
+                max={100}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="vatThreshold">Порог выручки для НДС (год), ₽</Label>
+              <Input
+                id="vatThreshold"
+                type="number"
+                value={inputs.vatThreshold}
+                onChange={(e) => handleChange('vatThreshold', Number(e.target.value))}
+                min={0}
+                step={1000000}
+              />
+            </div>
+            
+            <div className="bg-warning/20 border border-warning/30 rounded-lg p-3 text-sm">
+              <span className="text-muted-foreground">При годовой выручке &gt; </span>
+              <span className="font-semibold">{formatNumber(inputs.vatThreshold)} ₽</span>
+              <span className="text-muted-foreground"> добавляется НДС {inputs.vatRate}%</span>
+            </div>
+          </div>
+        </div>
+
         {/* Financial Parameters */}
         <div className="input-section">
           <h2 className="section-title">
@@ -320,18 +480,6 @@ export function InputSidebar({ inputs, onChange }: InputSidebarProps) {
           </h2>
           
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="taxRate">Налог на прибыль, %</Label>
-              <Input
-                id="taxRate"
-                type="number"
-                value={inputs.taxRate}
-                onChange={(e) => handleChange('taxRate', Number(e.target.value))}
-                min={0}
-                max={100}
-              />
-            </div>
-            
             <div>
               <Label htmlFor="discountRate">Ставка дисконтирования, %</Label>
               <Input
