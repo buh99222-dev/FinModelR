@@ -53,9 +53,23 @@ const Index = () => {
               <h1 className="text-2xl font-bold text-foreground">
                 Финансовая модель
               </h1>
-              <p className="text-muted-foreground text-sm mt-1">
-                Расчет на {inputs.horizonMonths} месяцев ({inputs.horizonMonths / 12} года)
-              </p>
+              <div className="flex items-center gap-3 mt-1">
+                <p className="text-muted-foreground text-sm">
+                  Расчет на {inputs.horizonMonths} месяцев ({Math.round(inputs.horizonMonths / 12 * 10) / 10} года)
+                </p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  calculations.activeScenario.id === 'pessimistic' ? 'bg-destructive/20 text-destructive' :
+                  calculations.activeScenario.id === 'optimistic' ? 'bg-success/20 text-success' :
+                  'bg-muted text-muted-foreground'
+                }`}>
+                  {calculations.activeScenario.name}
+                </span>
+                {inputs.seasonalityEnabled && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
+                    Сезонность
+                  </span>
+                )}
+              </div>
             </div>
             <Button onClick={handleExport} className="gap-2">
               <Download className="w-4 h-4" />
