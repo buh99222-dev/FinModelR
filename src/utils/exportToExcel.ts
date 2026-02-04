@@ -66,20 +66,23 @@ export function exportToCSV(
   
   // P&L Table
   rows.push('=== ОТЧЕТ О ПРИБЫЛЯХ И УБЫТКАХ (ОПиУ) ===');
-  const plHeaders = ['Месяц', 'Выручка', 'Переменные расходы', 'Валовая прибыль', 'Фикс. расходы', 'Амортизация', 'EBIT', 'Налог', 'Чистая прибыль'];
+  const plHeaders = ['Месяц', 'Выручка', 'НДС', 'Выручка после НДС', 'Переменные расходы', 'Валовая прибыль', 'Фикс. расходы', 'Амортизация', 'EBIT', 'УСН', 'Чистая прибыль', 'Коэф. сезонности'];
   rows.push(plHeaders.join(';'));
   
   plData.forEach(pl => {
     rows.push([
       pl.month,
       formatNumberForCSV(pl.revenue),
+      formatNumberForCSV(pl.vat),
+      formatNumberForCSV(pl.revenueAfterVat),
       formatNumberForCSV(pl.variableCosts),
       formatNumberForCSV(pl.grossProfit),
       formatNumberForCSV(pl.fixedCosts),
       formatNumberForCSV(pl.depreciation),
       formatNumberForCSV(pl.ebit),
-      formatNumberForCSV(pl.tax),
+      formatNumberForCSV(pl.usn),
       formatNumberForCSV(pl.netProfit),
+      formatNumberForCSV(pl.seasonalityCoef),
     ].join(';'));
   });
   rows.push('');
