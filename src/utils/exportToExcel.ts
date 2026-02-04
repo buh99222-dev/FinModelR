@@ -39,8 +39,11 @@ export function exportToCSV(
   rows.push(`CAPEX (руб.);${formatNumberForCSV(inputs.capex)}`);
   rows.push(`Срок службы оборудования (лет);${inputs.equipmentLifeYears}`);
   rows.push(`Переменные расходы (%);${inputs.variableCostsPercent}`);
-  rows.push(`Налог на прибыль (%);${inputs.taxRate}`);
+  rows.push(`УСН (%);${inputs.usnRate}`);
+  rows.push(`НДС (%);${inputs.vatRate}`);
+  rows.push(`Порог НДС (руб.);${formatNumberForCSV(inputs.vatThreshold)}`);
   rows.push(`Ставка дисконтирования (%);${inputs.discountRate}`);
+  rows.push(`Сезонность;${inputs.seasonalityEnabled ? 'Да' : 'Нет'}`);
   rows.push('');
   
   // Staff
