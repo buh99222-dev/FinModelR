@@ -17,6 +17,8 @@ export function PLTable({ data }: PLTableProps) {
   
   const rows = [
     { key: 'revenue', label: 'Выручка', getValue: (d: MonthlyPL) => d.revenue, isTotal: true },
+    { key: 'vat', label: 'НДС (если применимо)', getValue: (d: MonthlyPL) => -d.vat, isSubRow: true },
+    { key: 'revenueAfterVat', label: 'Выручка после НДС', getValue: (d: MonthlyPL) => d.revenueAfterVat },
     { key: 'variableCosts', label: 'Переменные расходы', getValue: (d: MonthlyPL) => -d.variableCosts },
     { key: 'grossProfit', label: 'Валовая прибыль', getValue: (d: MonthlyPL) => d.grossProfit, isHighlight: true },
     { key: 'rent', label: '  Аренда', getValue: (d: MonthlyPL) => -d.rent, isSubRow: true },
@@ -25,8 +27,9 @@ export function PLTable({ data }: PLTableProps) {
     { key: 'fixedCosts', label: 'Фиксированные расходы', getValue: (d: MonthlyPL) => -d.fixedCosts },
     { key: 'depreciation', label: 'Амортизация', getValue: (d: MonthlyPL) => -d.depreciation },
     { key: 'ebit', label: 'EBIT (операционная прибыль)', getValue: (d: MonthlyPL) => d.ebit, isHighlight: true },
-    { key: 'tax', label: 'Налог на прибыль', getValue: (d: MonthlyPL) => -d.tax },
+    { key: 'usn', label: 'УСН 15%', getValue: (d: MonthlyPL) => -d.usn },
     { key: 'netProfit', label: 'Чистая прибыль', getValue: (d: MonthlyPL) => d.netProfit, isTotal: true },
+    { key: 'seasonality', label: 'Коэф. сезонности', getValue: (d: MonthlyPL) => d.seasonalityCoef, isSubRow: true },
   ];
 
   const getYearLabel = (monthIndex: number) => {

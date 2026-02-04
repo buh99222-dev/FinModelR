@@ -6,9 +6,16 @@ import type {
   BreakEvenAnalysis,
   InvestmentMetrics,
   FinancialSummary,
+  Scenario,
 } from '@/types/financial';
+import { defaultScenarios } from '@/types/financial';
 
 export function useFinancialCalculations(inputs: InputParameters) {
+  // Get active scenario
+  const activeScenario: Scenario = useMemo(() => {
+    return defaultScenarios.find(s => s.id === inputs.activeScenarioId) || defaultScenarios[1];
+  }, [inputs.activeScenarioId]);
+
   // Calculate monthly payroll including taxes
   const monthlyPayroll = useMemo(() => {
     return inputs.staff.reduce((total, pos) => {
@@ -18,10 +25,10 @@ export function useFinancialCalculations(inputs: InputParameters) {
     }, 0);
   }, [inputs.staff]);
 
-  // Calculate monthly rent
+  // Calculate monthly rent (with scenario multiplier)
   const monthlyRent = useMemo(() => {
-    return inputs.floorArea * inputs.rentPerSqm;
-  }, [inputs.floorArea, inputs.rentPerSqm]);
+    return inputs.floorArea * inputs.rentPerSqm * activeScenario.rentMultiplier;
+  }, [inputs.floorArea, inputs.rentPerSqm, activeScenario.rentMultiplier]);
 
   // Calculate monthly depreciation
   const monthlyDepreciation = useMemo(() => {
@@ -33,31 +40,55 @@ export function useFinancialCalculations(inputs: InputParameters) {
     return monthlyRent + monthlyPayroll + inputs.otherFixedCosts;
   }, [monthlyRent, monthlyPayroll, inputs.otherFixedCosts]);
 
-  // Monthly revenue
-  const monthlyRevenue = useMemo(() => {
+  // Base monthly revenue (before seasonality and scenarios)
+  const baseMonthlyRevenue = useMemo(() => {
     return inputs.averageCheck * inputs.guestsPerDay * inputs.workDaysPerMonth;
   }, [inputs.averageCheck, inputs.guestsPerDay, inputs.workDaysPerMonth]);
 
-  // Monthly variable costs
-  const monthlyVariableCosts = useMemo(() => {
-    return monthlyRevenue * (inputs.variableCostsPercent / 100);
-  }, [monthlyRevenue, inputs.variableCostsPercent]);
+  // Get seasonality coefficient for a given month (1-indexed)
+  const getSeasonalityCoef = (month: number): number => {
+    if (!inputs.seasonalityEnabled) return 1.0;
+    // Month 1 = January (index 0), etc.
+    const monthIndex = ((month - 1) % 12);
+    return inputs.seasonality[monthIndex] || 1.0;
+  };
 
-  // P&L for all months
+  // P&L for all months with seasonality, scenarios, and new tax logic
   const plData: MonthlyPL[] = useMemo(() => {
     const result: MonthlyPL[] = [];
+    let cumulativeRevenue = 0;
     
     for (let month = 1; month <= inputs.horizonMonths; month++) {
-      const revenue = monthlyRevenue;
-      const variableCosts = monthlyVariableCosts;
-      const grossProfit = revenue - variableCosts;
+      const seasonalityCoef = getSeasonalityCoef(month);
+      
+      // Revenue with seasonality and scenario
+      const revenue = baseMonthlyRevenue * seasonalityCoef * activeScenario.revenueMultiplier;
+      cumulativeRevenue += revenue;
+      
+      // Check if cumulative revenue exceeds VAT threshold (20M by default)
+      const yearlyRevenueEstimate = revenue * 12;
+      const isVatApplicable = yearlyRevenueEstimate > inputs.vatThreshold;
+      
+      // НДС 5% от выручки если выручка > 20М в год
+      const vat = isVatApplicable ? revenue * (inputs.vatRate / 100) : 0;
+      const revenueAfterVat = revenue - vat;
+      
+      // Variable costs (with scenario multiplier)
+      const effectiveVariableCostsPercent = inputs.variableCostsPercent * activeScenario.costMultiplier;
+      const variableCosts = revenueAfterVat * (effectiveVariableCostsPercent / 100);
+      
+      const grossProfit = revenueAfterVat - variableCosts;
       const ebit = grossProfit - monthlyFixedCosts - monthlyDepreciation;
-      const tax = ebit > 0 ? ebit * (inputs.taxRate / 100) : 0;
-      const netProfit = ebit - tax;
+      
+      // УСН 15% от прибыли (только если прибыль положительная)
+      const usn = ebit > 0 ? ebit * (inputs.usnRate / 100) : 0;
+      const netProfit = ebit - usn;
 
       result.push({
         month,
         revenue,
+        vat,
+        revenueAfterVat,
         variableCosts,
         grossProfit,
         fixedCosts: monthlyFixedCosts,
@@ -66,23 +97,42 @@ export function useFinancialCalculations(inputs: InputParameters) {
         otherFixed: inputs.otherFixedCosts,
         depreciation: monthlyDepreciation,
         ebit,
-        tax,
+        usn,
         netProfit,
+        cumulativeRevenue,
+        seasonalityCoef,
       });
     }
     
     return result;
   }, [
     inputs.horizonMonths,
-    inputs.taxRate,
+    inputs.usnRate,
+    inputs.vatRate,
+    inputs.vatThreshold,
     inputs.otherFixedCosts,
-    monthlyRevenue,
-    monthlyVariableCosts,
+    inputs.variableCostsPercent,
+    inputs.seasonalityEnabled,
+    inputs.seasonality,
+    baseMonthlyRevenue,
     monthlyFixedCosts,
     monthlyDepreciation,
     monthlyRent,
     monthlyPayroll,
+    activeScenario,
   ]);
+
+  // Average monthly revenue (for display purposes)
+  const monthlyRevenue = useMemo(() => {
+    if (plData.length === 0) return 0;
+    return plData.reduce((sum, pl) => sum + pl.revenue, 0) / plData.length;
+  }, [plData]);
+
+  // Average monthly variable costs
+  const monthlyVariableCosts = useMemo(() => {
+    if (plData.length === 0) return 0;
+    return plData.reduce((sum, pl) => sum + pl.variableCosts, 0) / plData.length;
+  }, [plData]);
 
   // Cash flow for all months
   const cashFlowData: MonthlyCashFlow[] = useMemo(() => {
@@ -114,9 +164,12 @@ export function useFinancialCalculations(inputs: InputParameters) {
     return result;
   }, [plData, inputs.capex, inputs.horizonMonths]);
 
-  // Break-even analysis
+  // Break-even analysis (using average values)
   const breakEvenAnalysis: BreakEvenAnalysis = useMemo(() => {
-    const variableCostPerGuest = inputs.averageCheck * (inputs.variableCostsPercent / 100);
+    const avgRevenue = monthlyRevenue;
+    const avgVariableCostsPercent = inputs.variableCostsPercent * activeScenario.costMultiplier;
+    
+    const variableCostPerGuest = inputs.averageCheck * (avgVariableCostsPercent / 100);
     const marginPerGuest = inputs.averageCheck - variableCostPerGuest;
     const marginPercentage = (marginPerGuest / inputs.averageCheck) * 100;
     
@@ -126,8 +179,8 @@ export function useFinancialCalculations(inputs: InputParameters) {
     const breakEvenGuests = marginPerGuest > 0 ? fixedCostsForBE / marginPerGuest : 0;
     const breakEvenRevenue = breakEvenGuests * inputs.averageCheck;
     
-    const currentGuests = inputs.guestsPerDay * inputs.workDaysPerMonth;
-    const currentRevenue = monthlyRevenue;
+    const currentGuests = inputs.guestsPerDay * inputs.workDaysPerMonth * activeScenario.revenueMultiplier;
+    const currentRevenue = avgRevenue;
     
     const safetyMarginPercent = currentGuests > 0 
       ? ((currentGuests - breakEvenGuests) / currentGuests) * 100
@@ -150,6 +203,7 @@ export function useFinancialCalculations(inputs: InputParameters) {
     inputs.workDaysPerMonth,
     monthlyFixedCosts,
     monthlyRevenue,
+    activeScenario,
   ]);
 
   // Investment metrics (NPV, IRR, Payback)
@@ -269,5 +323,6 @@ export function useFinancialCalculations(inputs: InputParameters) {
     breakEvenAnalysis,
     investmentMetrics,
     summary,
+    activeScenario,
   };
 }
